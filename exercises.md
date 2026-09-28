@@ -168,11 +168,11 @@ Ghi lại **một** lỗi bạn gặp khi deploy lên cloud (build fail, health 
 timeout, sai REDIS_URL, app không đọc `$PORT`...): thông báo lỗi là gì, bạn
 tìm ra nguyên nhân bằng cách nào, và sửa ra sao?
 
-> Vì đang dùng phương án local fallback, lỗi triển khai có bằng chứng tôi gặp
-> nằm ở bước build image. BuildKit cảnh báo:
-> `JSONArgsRecommended: JSON arguments recommended for CMD to prevent unintended behavior related to OS signals`.
-> Tôi đọc build log và thấy `CMD` dạng shell được dùng để mở rộng `$PORT`, nhưng
-> shell có thể trở thành PID 1 và không chuyển SIGTERM đúng cho Uvicorn. Tôi đổi
-> thành `CMD ["sh", "-c", "exec uvicorn ... --port \"${PORT:-8000}\""]`:
-> `sh` vẫn mở rộng biến cổng, còn `exec` thay shell bằng Uvicorn để Uvicorn nhận
-> tín hiệu trực tiếp. Build lại không còn cảnh báo và stack ba agent đều healthy.
+> Khi deploy thật lên Railway, `/health` trả 200 nhưng `/ready` trả 500 và
+> `/ask` vẫn trả 401 dù tôi đã gửi API key. Tôi gọi riêng từng endpoint để tách
+> lỗi process khỏi lỗi dependency, sau đó kiểm tra Variables của `day12-agent`.
+> Nguyên nhân là `REDIS_URL` đang rỗng và `AGENT_API_KEY` trên Railway chưa khớp
+> với key dùng để kiểm thử. Tôi đặt `REDIS_URL` bằng reference
+> `${{day12-redis.REDIS_URL}}`, đồng bộ `AGENT_API_KEY`, rồi redeploy. Sau đó
+> `/health` và `/ready` đều trả 200, request không key trả 401, request có key
+> trả 200; 15 request cùng user còn cho đúng dãy mười mã 200 rồi năm mã 429.

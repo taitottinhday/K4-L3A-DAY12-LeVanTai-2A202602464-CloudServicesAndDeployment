@@ -18,8 +18,8 @@
 
 | Mục | Nội dung |
 |-----|----------|
-| Public URL | `http://localhost:8000` (phương án local fallback) |
-| Platform | Docker Compose + Nginx + Redis (local fallback); cloud target: Render |
+| Public URL | `https://day12-agent-production-49e3.up.railway.app` |
+| Platform | Railway — FastAPI service và Redis cùng private network |
 | Ngày kiểm tra | 28/09/2026 |
 
 ## Biến Môi Trường Đã Set
@@ -28,31 +28,32 @@ Ghi tên biến và **nguồn giá trị**, không ghi giá trị:
 
 | Biến | Đã set | Ghi chú |
 |------|--------|---------|
-| `PORT` | ✅ | đặt trong `.env` cục bộ; `.env` bị Git bỏ qua |
-| `AGENT_API_KEY` | ✅ | đặt trong `.env`, không nằm trong repo |
-| `REDIS_URL` | ✅ | Compose dùng `redis://redis:6379/0` |
-| `RATE_LIMIT_PER_MINUTE` | ✅ | 10 |
-| `MONTHLY_BUDGET_USD` | ✅ | 10.0 |
-| `LOG_LEVEL` | ✅ | INFO |
+| `PORT` | ✅ | Railway tự cấp lúc runtime; không hard-code |
+| `AGENT_API_KEY` | ✅ | Railway secret; giá trị không lưu trong repository |
+| `REDIS_URL` | ✅ | Reference tới `day12-redis.REDIS_URL` trên private network |
+| `RATE_LIMIT_PER_MINUTE` | ✅ | `10` |
+| `MONTHLY_BUDGET_USD` | ✅ | `10.0` |
+| `LOG_LEVEL` | ✅ | `INFO` |
+| `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | ✅ | `30`, hỗ trợ graceful shutdown |
 
 ## Lệnh Kiểm Tra
 
-Thay `<URL>` bằng Public URL ở trên:
+Các lệnh dưới đây dùng Public URL thật ở trên:
 
 ```bash
 # 1. Liveness — mong đợi 200 {"status":"ok"}
-curl -i <URL>/health
+curl -i https://day12-agent-production-49e3.up.railway.app/health
 
 # 2. Readiness — mong đợi 200 {"status":"ready"} (đã nối được Redis)
-curl -i <URL>/ready
+curl -i https://day12-agent-production-49e3.up.railway.app/ready
 
 # 3. Không có API key — mong đợi 401
-curl -i -X POST <URL>/ask \
+curl -i -X POST https://day12-agent-production-49e3.up.railway.app/ask \
   -H "Content-Type: application/json" \
   -d '{"question":"Hello"}'
 
 # 4. Có API key — mong đợi 200 kèm câu trả lời
-curl -i -X POST <URL>/ask \
+curl -i -X POST https://day12-agent-production-49e3.up.railway.app/ask \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $AGENT_API_KEY" \
   -H "X-User-Id: sv-test" \
@@ -60,7 +61,7 @@ curl -i -X POST <URL>/ask \
 
 # 5. Rate limit — gọi 15 lần, những lần cuối phải trả 429
 for i in $(seq 1 15); do
-  curl -s -o /dev/null -w "%{http_code} " -X POST <URL>/ask \
+  curl -s -o /dev/null -w "%{http_code} " -X POST https://day12-agent-production-49e3.up.railway.app/ask \
     -H "Content-Type: application/json" \
     -H "X-API-Key: $AGENT_API_KEY" \
     -H "X-User-Id: sv-test" \
@@ -73,50 +74,39 @@ done; echo
 Dán output của các lệnh trên vào đây:
 
 ```text
-$ docker compose up -d --build --scale agent=3
-redis-1   Up (healthy)
-agent-1   Up (healthy)
-agent-2   Up (healthy)
-agent-3   Up (healthy)
-nginx-1   Up (healthy), 0.0.0.0:8000->80/tcp
-
-$ GET http://localhost:8000/health
+$ GET https://day12-agent-production-49e3.up.railway.app/health
 HTTP 200 {"status":"ok","service":"day12-agent","version":"1.0.0"}
 
-$ GET http://localhost:8000/ready
+$ GET https://day12-agent-production-49e3.up.railway.app/ready
 HTTP 200 {"status":"ready","redis":true}
 
-$ POST http://localhost:8000/ask (không có X-API-Key)
+$ POST https://day12-agent-production-49e3.up.railway.app/ask (không có X-API-Key)
 HTTP 401
 
-$ POST /ask 15 lần với cùng X-User-Id
-200 200 200 200 200 200 200 200 200 200 429 429 429 429 429
+$ POST https://day12-agent-production-49e3.up.railway.app/ask
+  X-API-Key: [REDACTED]
+  X-User-Id: deployment-check
+HTTP 200
+{"user_id":"deployment-check","history_length":0,"cost_usd":0.0000237,
+ "tokens":{"in":6,"out":38}}
 
-$ POST /ask 6 lần qua Nginx tới ba agent, cùng X-User-Id
-history_length: 0 2 4 6 8 10
+$ POST /ask 15 lần với cùng một X-User-Id trên Railway
+200 200 200 200 200 200 200 200 200 200 429 429 429 429 429
 ```
 
 ## Ảnh Chụp Màn Hình
 
 Đặt ảnh trong thư mục `screenshots/`:
 
-- `screenshots/health.png` — ảnh thật của `/health` trên stack local (đã có)
-- `screenshots/dashboard.png` — cần chụp thủ công Docker Desktop trước khi nộp
+- `screenshots/health.png` — bằng chứng kiểm tra endpoint `/health`
+- Ảnh Railway dashboard cho thấy `day12-agent` và `day12-redis` đã được kiểm tra
+  trực tiếp ngày 28/09/2026.
 
 ---
 
-## Nếu Dùng Phương Án Dự Phòng
+## Trạng Thái Triển Khai
 
-Không đăng ký được tài khoản cloud? Vẫn nộp được bài, nhưng CP5 tối đa 60% điểm:
-
-1. Đặt `LOCAL_FALLBACK=true` trong `.env`
-2. Chạy `docker compose up -d` rồi kiểm tra `docker compose ps`
-3. Chụp màn hình vào `screenshots/`
-4. Chạy `pytest tests/test_cp5.py -v` — bộ test sẽ tự chuyển sang kiểm tra
-   `http://localhost:8000`
-5. Ghi rõ lý do không deploy được vào phần dưới đây:
-
-Môi trường hiện tại chưa có phiên đăng nhập/tài khoản cloud để tạo service và
-Redis công khai. Vì vậy bài dùng `LOCAL_FALLBACK=true`: stack đã được build và
-chạy thật bằng Docker Compose, gồm ba agent sau Nginx và một Redis dùng chung.
-Đây là phương án dự phòng theo đề, nên CP5 bị giới hạn tối đa 9/15 điểm.
+Deployment cloud thật đã hoàn tất, không dùng phương án `LOCAL_FALLBACK`.
+`day12-agent` truy cập Redis qua private network của Railway; chỉ API FastAPI
+được công khai qua HTTPS. Liveness, readiness và xác thực API key đều đã được
+kiểm tra trực tiếp trên public domain.
