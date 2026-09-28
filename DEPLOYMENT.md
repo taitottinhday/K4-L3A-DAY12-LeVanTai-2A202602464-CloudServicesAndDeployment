@@ -10,27 +10,27 @@
 
 | Mục | Nội dung |
 |-----|----------|
-| Họ và tên | (điền họ tên) |
-| Mã học viên | (điền mã học viên) |
-| Repo | (điền link repo K4-L3A-DAY12-HoVaTen-MSSV-CloudServicesAndDeployment) |
+| Họ và tên | Lê Văn Tài |
+| Mã học viên | 2A202602464 |
+| Repo | https://github.com/taitottinhday/K4-L3A-DAY12-LeVanTai-2A202602464-CloudServicesAndDeployment |
 
 ## Service
 
 | Mục | Nội dung |
 |-----|----------|
-| Public URL | https://TODO-thay-bang-url-that.up.railway.app |
-| Platform | Railway / Render / Cloud Run — (điền platform bạn dùng) |
-| Ngày deploy | (điền ngày) |
+| Public URL | `http://localhost:8000` (phương án local fallback) |
+| Platform | Docker Compose + Nginx + Redis (local fallback); cloud target: Render |
+| Ngày kiểm tra | 28/09/2026 |
 
-## Biến Môi Trường Đã Set Trên Cloud
+## Biến Môi Trường Đã Set
 
 Ghi tên biến và **nguồn giá trị**, không ghi giá trị:
 
 | Biến | Đã set | Ghi chú |
 |------|--------|---------|
-| `PORT` | ✅ | platform tự gán |
-| `AGENT_API_KEY` | ✅ | đặt trong dashboard, không nằm trong repo |
-| `REDIS_URL` | ✅ | (điền: Redis add-on của platform / Upstash / ...) |
+| `PORT` | ✅ | đặt trong `.env` cục bộ; `.env` bị Git bỏ qua |
+| `AGENT_API_KEY` | ✅ | đặt trong `.env`, không nằm trong repo |
+| `REDIS_URL` | ✅ | Compose dùng `redis://redis:6379/0` |
 | `RATE_LIMIT_PER_MINUTE` | ✅ | 10 |
 | `MONTHLY_BUDGET_USD` | ✅ | 10.0 |
 | `LOG_LEVEL` | ✅ | INFO |
@@ -72,16 +72,36 @@ done; echo
 
 Dán output của các lệnh trên vào đây:
 
-```
-(điền output)
+```text
+$ docker compose up -d --build --scale agent=3
+redis-1   Up (healthy)
+agent-1   Up (healthy)
+agent-2   Up (healthy)
+agent-3   Up (healthy)
+nginx-1   Up (healthy), 0.0.0.0:8000->80/tcp
+
+$ GET http://localhost:8000/health
+HTTP 200 {"status":"ok","service":"day12-agent","version":"1.0.0"}
+
+$ GET http://localhost:8000/ready
+HTTP 200 {"status":"ready","redis":true}
+
+$ POST http://localhost:8000/ask (không có X-API-Key)
+HTTP 401
+
+$ POST /ask 15 lần với cùng X-User-Id
+200 200 200 200 200 200 200 200 200 200 429 429 429 429 429
+
+$ POST /ask 6 lần qua Nginx tới ba agent, cùng X-User-Id
+history_length: 0 2 4 6 8 10
 ```
 
 ## Ảnh Chụp Màn Hình
 
 Đặt ảnh trong thư mục `screenshots/`:
 
-- `screenshots/dashboard.png` — trang quản lý service trên platform
-- `screenshots/health.png` — kết quả gọi `/health` từ trình duyệt hoặc curl
+- `screenshots/health.png` — ảnh thật của `/health` trên stack local (đã có)
+- `screenshots/dashboard.png` — cần chụp thủ công Docker Desktop trước khi nộp
 
 ---
 
@@ -96,6 +116,7 @@ Không đăng ký được tài khoản cloud? Vẫn nộp được bài, nhưng
    `http://localhost:8000`
 5. Ghi rõ lý do không deploy được vào phần dưới đây:
 
-```
-(điền lý do nếu dùng phương án dự phòng, ngược lại xóa mục này)
-```
+Môi trường hiện tại chưa có phiên đăng nhập/tài khoản cloud để tạo service và
+Redis công khai. Vì vậy bài dùng `LOCAL_FALLBACK=true`: stack đã được build và
+chạy thật bằng Docker Compose, gồm ba agent sau Nginx và một Redis dùng chung.
+Đây là phương án dự phòng theo đề, nên CP5 bị giới hạn tối đa 9/15 điểm.
